@@ -5,6 +5,7 @@ import java.sql.Statement;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -15,14 +16,17 @@ import org.bukkit.Material;
 import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.Chest;
+import org.bukkit.block.ChiseledBookshelf;
 import org.bukkit.block.DoubleChest;
 import org.bukkit.block.Jukebox;
 import org.bukkit.block.Sign;
 import org.bukkit.block.data.Bisected;
 import org.bukkit.block.data.Bisected.Half;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.Directional;
 import org.bukkit.block.data.Lightable;
 import org.bukkit.block.data.Waterlogged;
 import org.bukkit.block.data.type.Bed;
@@ -666,6 +670,55 @@ public final class PlayerInteractListener extends Queue implements Listener {
                             }
                         }
                     }
+
+                    else if (type == Material.CHISELED_BOOKSHELF) {
+                         BlockState blockState = block.getState();
+                         if (blockState instanceof ChiseledBookshelf) {
+                            ChiseledBookshelf bookshelf = (ChiseledBookshelf) blockState;
+
+                            int slot = getHitBookshelfSlot(event);
+                            if (slot == -1) {
+                                return;
+                            }
+
+                            ItemStack book = Optional.ofNullable(bookshelf.getInventory().getItem(slot)).orElse(new ItemStack(Material.AIR));
+                            ItemStack oldItemState = book.clone();
+                            ItemStack newItemState = new ItemStack(Material.AIR);
+
+                            if (book.getType() == Material.AIR) {
+                                ItemStack handItem = null;
+                                ItemStack mainHand = player.getInventory().getItemInMainHand();
+                                ItemStack offHand = player.getInventory().getItemInOffHand();
+
+                                if (EquipmentSlot.HAND == event.getHand() && Tag.ITEMS_BOOKSHELF_BOOKS.isTagged(mainHand.getType())) {
+                                    handItem = mainHand;
+                                }
+                                else if (EquipmentSlot.OFF_HAND == event.getHand() && Tag.ITEMS_BOOKSHELF_BOOKS.isTagged(offHand.getType())) {
+                                    handItem = offHand;
+                                }
+                                else {
+                                    return;
+                                }
+
+                                oldItemState = new ItemStack(Material.AIR);
+                                newItemState = handItem.clone();
+                            }
+
+                            if (!oldItemState.equals(newItemState)) {
+                                if (Config.getConfig(player.getWorld()).PLAYER_INTERACTIONS) {
+                                    Queue.queuePlayerInteraction(player.getName(), blockState, type);
+                                }
+
+                                if (Config.getConfig(block.getWorld()).ITEM_TRANSACTIONS) {
+                                    boolean logDrops = player.getGameMode() != GameMode.CREATIVE;
+                                    ItemStack[] oldState = new ItemStack[] { oldItemState };
+                                    ItemStack[] newState = new ItemStack[] { newItemState };
+                                    PlayerInteractEntityListener.queueContainerSpecifiedItems(player.getName(), Material.CHISELED_BOOKSHELF, new Object[] { oldState, newState }, bookshelf.getLocation(), logDrops);
+                                }
+                            }
+                        }
+                    }
+
                     else if (type == Material.DRAGON_EGG) {
                         clickedDragonEgg(player, block);
                     }
@@ -819,5 +872,61 @@ public final class PlayerInteractListener extends Queue implements Listener {
         String coordinates = x + "." + y + "." + z + "." + wid + "." + Material.DRAGON_EGG.name();
         CacheHandler.interactCache.put(coordinates, new Object[] { time, Material.DRAGON_EGG, player.getName() });
     }
+
+    private static int getHitBookshelfSlot(PlayerInteractEvent event) {
+        Block block = event.getClickedBlock();
+        if (block == null || block.getType() != Material.CHISELED_BOOKSHELF) {
+            return -1;
+        }
+
+        Location hit = event.getInteractionPoint();
+        BlockFace hitDirection = event.getBlockFace();
+        if (hit == null || !(block.getBlockData() instanceof Directional && ((Directional) block.getBlockData()).getFacing() == hitDirection)) {
+            return -1;
+        }
+        float[] vec2 = getRelativeHitCoordinatesForBlockFace(block.getRelative(hitDirection).getLocation(), hit, hitDirection);
+        if (vec2.length != 2) {
+            return -1;
+        }
+
+        return getHitSlot(vec2[0], vec2[1]);
+    }
+
+    private static float[] getRelativeHitCoordinatesForBlockFace(Location blockPos, Location hit, BlockFace hitDirection) {
+        blockPos = blockPos.getBlock().getRelative(hitDirection).getLocation();
+        double d = hit.getX() - blockPos.getBlockX();
+        double e = hit.getY() - blockPos.getBlockY();
+        double f = hit.getZ() - blockPos.getBlockZ();
+        switch (hitDirection) {
+            case NORTH:
+                return new float[] {(float) (1.0D - d), (float) e};
+            case SOUTH:
+                return new float[] {(float) d, (float) e};
+            case WEST:
+                return new float[] {(float) f, (float) e};
+            case EAST:
+                return new float[] {(float) (1.0D - f), (float) e};
+            case DOWN:
+            case UP:
+                return new float[0];
+            default:
+                throw new IncompatibleClassChangeError();
+        }
+    }
+
+    private static int getHitSlot(float x, float y) {
+        int i = y >= 0.5F ? 0 : 1;
+        int j = getSection(x);
+        return j + i * 3;
+    }
+
+    private static int getSection(float x) {
+        if (x < 0.375F) {
+            return 0;
+        } else {
+            return x < 0.6875F ? 1 : 2;
+        }
+    }
+
 
 }

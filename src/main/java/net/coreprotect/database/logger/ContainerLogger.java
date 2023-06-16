@@ -37,7 +37,7 @@ public class ContainerLogger extends Queue {
                 contents = (ItemStack[]) ((Object[]) container)[1];
                 faceData = ((BlockFace) ((Object[]) container)[2]).name();
             }
-            else if (type == Material.JUKEBOX || type == Material.ARMOR_STAND) {
+            else if (type == Material.CHISELED_BOOKSHELF || type == Material.JUKEBOX || type == Material.ARMOR_STAND) {
                 contents = (ItemStack[]) ((Object[]) container)[1];
             }
             else {
